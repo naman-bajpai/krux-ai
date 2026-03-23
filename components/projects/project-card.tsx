@@ -36,8 +36,8 @@ interface ProjectCardProps {
 
 const planColors: Record<string, string> = {
   ASSESSMENT: "bg-slate-100 text-slate-700",
-  MIGRATION: "bg-blue-100 text-blue-700",
-  ENTERPRISE: "bg-purple-100 text-purple-700",
+  MIGRATION: "bg-secondary text-secondary-foreground",
+  ENTERPRISE: "bg-muted text-muted-foreground",
 };
 
 export function ProjectCard({ project }: ProjectCardProps) {

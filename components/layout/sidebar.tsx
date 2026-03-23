@@ -69,14 +69,14 @@ export function Sidebar() {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          "relative flex flex-col h-full border-r bg-sidebar transition-all duration-300 ease-in-out",
+          "abstract-sidebar relative flex h-full flex-col transition-all duration-300 ease-in-out",
           collapsed ? "w-16" : "w-64"
         )}
       >
         {/* Logo */}
-        <div className="flex h-14 items-center border-b px-4 shrink-0">
+        <div className="flex h-14 shrink-0 items-center border-b border-[hsl(var(--sidebar-border)/0.6)] px-4">
           <Link href="/dashboard" className="flex items-center gap-2 min-w-0">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-sidebar-accent shadow-[0_12px_30px_-18px_rgba(0,0,0,0.6)]">
               <Zap className="h-4 w-4 text-primary-foreground" />
             </div>
             {!collapsed && (
@@ -91,7 +91,7 @@ export function Sidebar() {
         <Button
           variant="ghost"
           size="icon"
-          className="absolute -right-3 top-16 h-6 w-6 rounded-full border bg-background shadow-sm z-10"
+          className="abstract-panel absolute -right-3 top-16 z-10 h-7 w-7 rounded-full text-foreground shadow-none"
           onClick={() => setCollapsed(!collapsed)}
         >
           {collapsed ? (
@@ -119,10 +119,10 @@ export function Sidebar() {
                     <Link
                       href={item.href}
                       className={cn(
-                        "flex h-9 w-9 mx-auto items-center justify-center rounded-md transition-colors",
+                        "flex h-9 w-9 mx-auto items-center justify-center rounded-xl transition-colors",
                         isActive
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_16px_32px_-24px_rgba(148,209,215,0.7)]"
+                          : "text-sidebar-foreground hover:bg-[hsl(var(--sidebar-accent)/0.82)] hover:text-sidebar-accent-foreground"
                       )}
                     >
                       <item.icon className="h-4 w-4" />
@@ -135,10 +135,10 @@ export function Sidebar() {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex h-9 items-center gap-3 rounded-md px-3 text-sm transition-colors",
+                    "flex h-9 items-center gap-3 rounded-xl px-3 text-sm transition-colors",
                     isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-[0_18px_36px_-28px_rgba(148,209,215,0.75)]"
+                      : "text-sidebar-foreground hover:bg-[hsl(var(--sidebar-accent)/0.82)] hover:text-sidebar-accent-foreground"
                   )}
                 >
                   <item.icon className="h-4 w-4 shrink-0" />
@@ -150,7 +150,7 @@ export function Sidebar() {
         </ScrollArea>
 
         {/* Bottom navigation */}
-        <div className="border-t py-4 px-2">
+        <div className="border-t border-[hsl(var(--sidebar-border)/0.6)] px-2 py-4">
           {!collapsed && (
             <p className="px-2 mb-1 text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Account
@@ -166,10 +166,10 @@ export function Sidebar() {
                     <Link
                       href={item.href}
                       className={cn(
-                        "flex h-9 w-9 mx-auto items-center justify-center rounded-md transition-colors",
+                        "flex h-9 w-9 mx-auto items-center justify-center rounded-xl transition-colors",
                         isActive
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-[0_16px_32px_-24px_rgba(148,209,215,0.7)]"
+                          : "text-sidebar-foreground hover:bg-[hsl(var(--sidebar-accent)/0.82)] hover:text-sidebar-accent-foreground"
                       )}
                     >
                       <item.icon className="h-4 w-4" />
@@ -182,10 +182,10 @@ export function Sidebar() {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex h-9 items-center gap-3 rounded-md px-3 text-sm transition-colors",
+                    "flex h-9 items-center gap-3 rounded-xl px-3 text-sm transition-colors",
                     isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-[0_18px_36px_-28px_rgba(148,209,215,0.75)]"
+                      : "text-sidebar-foreground hover:bg-[hsl(var(--sidebar-accent)/0.82)] hover:text-sidebar-accent-foreground"
                   )}
                 >
                   <item.icon className="h-4 w-4 shrink-0" />

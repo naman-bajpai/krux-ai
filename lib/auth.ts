@@ -95,7 +95,7 @@ export const authOptions: NextAuthOptions = {
         });
         if (dbUser) {
           token.role = dbUser.role;
-          token.organizationId = dbUser.organizationId;
+          token.organizationId = dbUser.organizationId ?? undefined;
         }
       }
 

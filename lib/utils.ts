@@ -70,24 +70,24 @@ export function formatConfidenceScore(score: number | null): string {
 
 export function getConfidenceColor(score: number | null): string {
   if (score === null) return "text-muted-foreground";
-  if (score >= 0.85) return "text-green-600 dark:text-green-400";
-  if (score >= 0.65) return "text-yellow-600 dark:text-yellow-400";
-  return "text-red-600 dark:text-red-400";
+  if (score >= 0.85) return "text-foreground";
+  if (score >= 0.65) return "text-muted-foreground";
+  return "text-foreground/70";
 }
 
 export function getStatusColor(status: string): string {
   const map: Record<string, string> = {
-    PENDING: "bg-slate-100 text-slate-700",
-    CONVERTING: "bg-blue-100 text-blue-700",
-    CONVERTED: "bg-purple-100 text-purple-700",
-    REVIEWED: "bg-yellow-100 text-yellow-700",
-    APPROVED: "bg-green-100 text-green-700",
-    FAILED: "bg-red-100 text-red-700",
-    DRAFT: "bg-slate-100 text-slate-700",
-    ACTIVE: "bg-blue-100 text-blue-700",
-    PAUSED: "bg-yellow-100 text-yellow-700",
-    COMPLETED: "bg-green-100 text-green-700",
-    ARCHIVED: "bg-slate-100 text-slate-500",
+    PENDING: "bg-muted text-muted-foreground",
+    CONVERTING: "bg-secondary text-secondary-foreground",
+    CONVERTED: "bg-accent text-accent-foreground",
+    REVIEWED: "bg-muted text-muted-foreground",
+    APPROVED: "bg-primary text-primary-foreground",
+    FAILED: "bg-destructive text-destructive-foreground",
+    DRAFT: "bg-muted text-muted-foreground",
+    ACTIVE: "bg-secondary text-secondary-foreground",
+    PAUSED: "bg-muted text-muted-foreground",
+    COMPLETED: "bg-primary text-primary-foreground",
+    ARCHIVED: "bg-muted text-muted-foreground",
   };
-  return map[status] ?? "bg-slate-100 text-slate-700";
+  return map[status] ?? "bg-muted text-muted-foreground";
 }

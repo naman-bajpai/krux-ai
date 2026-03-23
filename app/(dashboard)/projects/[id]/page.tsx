@@ -157,25 +157,25 @@ export default async function ProjectDetailPage({ params }: Props) {
             label: "Total Objects",
             value: totalObjects,
             icon: GitMerge,
-            color: "text-blue-500",
+            color: "text-foreground",
           },
           {
             label: "Converted",
             value: stats["CONVERTED"] ?? 0,
             icon: BarChart3,
-            color: "text-purple-500",
+            color: "text-muted-foreground",
           },
           {
             label: "Pending Review",
             value: (stats["CONVERTED"] ?? 0) + (stats["REVIEWED"] ?? 0),
             icon: Clock,
-            color: "text-yellow-500",
+            color: "text-muted-foreground",
           },
           {
             label: "Approved",
             value: approvedCount,
             icon: CheckCircle2,
-            color: "text-green-500",
+            color: "text-foreground",
           },
         ].map((stat) => (
           <Card key={stat.label}>

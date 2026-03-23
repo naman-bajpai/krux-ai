@@ -16,7 +16,7 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen overflow-hidden bg-transparent">
       {/* Sidebar */}
       <Sidebar />
 

@@ -1,4 +1,4 @@
-import { Queue, QueueEvents } from "bullmq";
+import { ConnectionOptions, Queue, QueueEvents } from "bullmq";
 import { createBullMQConnection } from "@/lib/redis";
 
 // ─── Queue Definitions ────────────────────────────────────────────────────────
@@ -38,7 +38,7 @@ const connection = createBullMQConnection();
 export const migrationQueue = new Queue<ConvertObjectJob>(
   QUEUE_NAMES.MIGRATION,
   {
-    connection,
+    connection: connection as ConnectionOptions,
     defaultJobOptions: {
       attempts: 3,
       backoff: {
@@ -54,7 +54,7 @@ export const migrationQueue = new Queue<ConvertObjectJob>(
 export const notificationQueue = new Queue<SendNotificationJob>(
   QUEUE_NAMES.NOTIFICATIONS,
   {
-    connection,
+    connection: connection as ConnectionOptions,
     defaultJobOptions: {
       attempts: 5,
       backoff: { type: "fixed", delay: 1000 },
@@ -65,7 +65,7 @@ export const notificationQueue = new Queue<SendNotificationJob>(
 );
 
 export const exportQueue = new Queue<ExportProjectJob>(QUEUE_NAMES.EXPORTS, {
-  connection,
+  connection: connection as ConnectionOptions,
   defaultJobOptions: {
     attempts: 2,
     backoff: { type: "fixed", delay: 5000 },
@@ -77,7 +77,7 @@ export const exportQueue = new Queue<ExportProjectJob>(QUEUE_NAMES.EXPORTS, {
 // ─── Queue Events ─────────────────────────────────────────────────────────────
 
 export const migrationQueueEvents = new QueueEvents(QUEUE_NAMES.MIGRATION, {
-  connection: createBullMQConnection(),
+  connection: connection as ConnectionOptions,
 });
 
 migrationQueueEvents.on("completed", ({ jobId }) => {

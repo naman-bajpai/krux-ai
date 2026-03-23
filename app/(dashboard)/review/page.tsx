@@ -86,7 +86,7 @@ export default function ReviewPage() {
               </div>
             ) : !pendingObjects?.length ? (
               <div className="flex flex-col items-center py-12 text-center">
-                <CheckCircle className="h-8 w-8 text-green-500 mb-2" />
+                <CheckCircle className="h-8 w-8 text-muted-foreground mb-2" />
                 <p className="text-sm font-medium">All caught up!</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   No objects pending review.
@@ -141,7 +141,7 @@ export default function ReviewPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="text-red-600 border-red-200 hover:bg-red-50"
+                    className="text-destructive border-destructive/50 hover:bg-destructive/10"
                     onClick={() => handleDecision(ReviewDecisionType.REJECTED)}
                     disabled={submitReview.isPending}
                   >
@@ -151,7 +151,7 @@ export default function ReviewPage() {
                   <Button
                     size="sm"
                     variant="outline"
-                    className="text-yellow-600 border-yellow-200 hover:bg-yellow-50"
+                    className="text-muted-foreground border-muted-foreground/50 hover:bg-muted/50"
                     onClick={() => handleDecision(ReviewDecisionType.MODIFIED)}
                     disabled={submitReview.isPending}
                   >
@@ -160,7 +160,7 @@ export default function ReviewPage() {
                   </Button>
                   <Button
                     size="sm"
-                    className="bg-green-600 hover:bg-green-700"
+                    className="bg-primary hover:bg-primary/90"
                     onClick={() => handleDecision(ReviewDecisionType.APPROVED)}
                     disabled={submitReview.isPending}
                   >

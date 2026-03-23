@@ -1,7 +1,5 @@
-import { Worker, Job } from "bullmq";
+import { ConnectionOptions, Worker, type Job } from "bullmq";
 import { createBullMQConnection } from "@/lib/redis";
-import { db } from "@/lib/db";
-import { ObjectStatus } from "@prisma/client";
 import {
   QUEUE_NAMES,
   type ConvertObjectJob,
@@ -13,88 +11,10 @@ import {
   runSAPExtraction,
   type SAPExtractionJobData,
 } from "@/lib/sap/extractor";
+import { processConversionJob } from "@/server/jobs/conversion-worker";
 
 // ─── Migration Worker ─────────────────────────────────────────────────────────
-
-async function processConvertObject(job: Job<ConvertObjectJob>) {
-  const { objectId, projectId } = job.data;
-  const startTime = Date.now();
-
-  console.log(`[Worker] Processing object ${objectId}`);
-
-  const migrationObject = await db.migrationObject.findUnique({
-    where: { id: objectId },
-  });
-
-  if (!migrationObject) {
-    throw new Error(`Object ${objectId} not found`);
-  }
-
-  // Update progress
-  await job.updateProgress(10);
-
-  try {
-    // Simulate AI conversion (replace with actual AI call)
-    // e.g., OpenAI API call to convert SAP ABAP to target language
-    await job.updateProgress(30);
-
-    const conversionResult = await simulateConversion(
-      migrationObject.sourceCode,
-      migrationObject.objectType
-    );
-
-    await job.updateProgress(80);
-
-    const processingTime = Date.now() - startTime;
-
-    await db.migrationObject.update({
-      where: { id: objectId },
-      data: {
-        convertedCode: conversionResult.code,
-        confidenceScore: conversionResult.confidence,
-        status: ObjectStatus.CONVERTED,
-        processingTime,
-        errorMessage: null,
-      },
-    });
-
-    await job.updateProgress(90);
-
-    // Log the action
-    await db.auditLog.create({
-      data: {
-        projectId,
-        userId: job.data.userId,
-        action: "OBJECT_CONVERTED",
-        metadata: {
-          objectId,
-          confidence: conversionResult.confidence,
-          processingTime,
-        },
-      },
-    });
-
-    await job.updateProgress(100);
-
-    console.log(
-      `[Worker] Object ${objectId} converted in ${processingTime}ms (confidence: ${conversionResult.confidence})`
-    );
-
-    return { objectId, confidence: conversionResult.confidence };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-
-    await db.migrationObject.update({
-      where: { id: objectId },
-      data: {
-        status: ObjectStatus.FAILED,
-        errorMessage: message,
-      },
-    });
-
-    throw err;
-  }
-}
+// Delegates to the real AI converter — see /server/jobs/conversion-worker.ts
 
 // ─── Notification Worker ──────────────────────────────────────────────────────
 
@@ -119,9 +39,9 @@ export function startWorkers() {
 
   const migrationWorker = new Worker<ConvertObjectJob>(
     QUEUE_NAMES.MIGRATION,
-    processConvertObject,
+    processConversionJob,
     {
-      connection,
+      connection: connection as ConnectionOptions,
       concurrency: 5,
       limiter: {
         max: 10,
@@ -133,13 +53,13 @@ export function startWorkers() {
   const notificationWorker = new Worker<SendNotificationJob>(
     QUEUE_NAMES.NOTIFICATIONS,
     processNotification,
-    { connection, concurrency: 10 }
+    { connection: connection as ConnectionOptions, concurrency: 10 }
   );
 
   const exportWorker = new Worker<ExportProjectJob>(
     QUEUE_NAMES.EXPORTS,
     processExport,
-    { connection, concurrency: 2 }
+    { connection: connection as ConnectionOptions, concurrency: 2 }
   );
 
   // ── SAP Extraction Worker ───────────────────────────────────────────────────
@@ -170,31 +90,4 @@ export function startWorkers() {
 
   return { migrationWorker, notificationWorker, exportWorker, sapExtractionWorker };
 }
-
-// ─── Simulation Helper (replace with real AI) ────────────────────────────────
-
-async function simulateConversion(
-  sourceCode: string,
-  objectType: string
-): Promise<{ code: string; confidence: number }> {
-  // Simulate processing delay
-  await new Promise((resolve) =>
-    setTimeout(resolve, 500 + Math.random() * 1500)
-  );
-
-  const confidence = 0.6 + Math.random() * 0.4;
-
-  const converted = `// Converted from SAP ABAP (${objectType})
-// Confidence: ${Math.round(confidence * 100)}%
-// Generated: ${new Date().toISOString()}
-
-${sourceCode
-  .split("\n")
-  .map((line) => `// ${line}`)
-  .join("\n")}
-
-// TODO: Review and finalize the converted code above
-`;
-
-  return { code: converted, confidence };
-}
+export type Workers = ReturnType<typeof startWorkers>;

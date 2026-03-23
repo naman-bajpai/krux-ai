@@ -57,8 +57,8 @@ function StatCard({
         </div>
         {trend !== undefined && (
           <div className="mt-3 flex items-center gap-1">
-            <TrendingUp className="h-3 w-3 text-green-500" />
-            <span className="text-xs text-green-600 font-medium">
+            <TrendingUp className="h-3 w-3 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground font-medium">
               {trend.value}%
             </span>
             <span className="text-xs text-muted-foreground">{trend.label}</span>
@@ -83,32 +83,32 @@ export function DashboardStats({
       value: projectCount,
       description: "Active migration projects",
       icon: FolderKanban,
-      colorClass: "text-blue-600",
-      bgClass: "bg-blue-100 dark:bg-blue-900/30",
+      colorClass: "text-foreground",
+      bgClass: "bg-muted",
     },
     {
       title: "Migration Objects",
       value: totalObjects.toLocaleString(),
       description: `${pendingObjects} pending conversion`,
       icon: GitMerge,
-      colorClass: "text-purple-600",
-      bgClass: "bg-purple-100 dark:bg-purple-900/30",
+      colorClass: "text-foreground",
+      bgClass: "bg-muted",
     },
     {
       title: "Approved",
       value: approvedObjects.toLocaleString(),
       description: `${convertedObjects} awaiting review`,
       icon: CheckCircle2,
-      colorClass: "text-green-600",
-      bgClass: "bg-green-100 dark:bg-green-900/30",
+      colorClass: "text-foreground",
+      bgClass: "bg-muted",
     },
     {
       title: "Completion Rate",
       value: `${completionRate}%`,
       description: "Objects approved vs total",
       icon: Zap,
-      colorClass: "text-orange-600",
-      bgClass: "bg-orange-100 dark:bg-orange-900/30",
+      colorClass: "text-foreground",
+      bgClass: "bg-muted",
       ...(completionRate > 0 && {
         trend: { value: completionRate, label: "completion" },
       }),

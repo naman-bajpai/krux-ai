@@ -36,7 +36,7 @@ export function Header({ projectName }: HeaderProps) {
   const user = session?.user;
 
   return (
-    <header className="flex h-14 items-center border-b bg-background px-4 gap-4 shrink-0">
+    <header className="abstract-topbar flex h-14 shrink-0 items-center gap-4 px-4">
       {/* Breadcrumb / Project context */}
       <div className="flex items-center gap-2 flex-1 min-w-0">
         {projectName && (
@@ -54,7 +54,7 @@ export function Header({ projectName }: HeaderProps) {
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="h-8 gap-1.5 px-2 font-medium text-sm"
+              className="h-9 gap-1.5 rounded-xl px-3 text-sm font-medium"
             >
               <span className="truncate max-w-[200px]">
                 {projectName ?? "Select Project"}
@@ -80,7 +80,7 @@ export function Header({ projectName }: HeaderProps) {
       {/* Search */}
       <Button
         variant="outline"
-        className="hidden md:flex h-8 w-64 justify-start gap-2 text-sm text-muted-foreground font-normal"
+        className="abstract-input hidden h-9 w-64 justify-start gap-2 rounded-xl text-sm font-normal text-muted-foreground shadow-none md:flex"
         onClick={() => {
           /* TODO: open command palette */
         }}
@@ -93,7 +93,7 @@ export function Header({ projectName }: HeaderProps) {
       </Button>
 
       {/* Notifications */}
-      <Button variant="ghost" size="icon" className="relative h-8 w-8">
+      <Button variant="ghost" size="icon" className="relative h-9 w-9 rounded-xl">
         <Bell className="h-4 w-4" />
         <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-primary" />
       </Button>
@@ -103,7 +103,7 @@ export function Header({ projectName }: HeaderProps) {
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            className="h-8 gap-2 px-2"
+            className="h-9 gap-2 rounded-xl px-3"
             aria-label="User menu"
           >
             <Avatar className="h-7 w-7">
