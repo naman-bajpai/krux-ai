@@ -14,6 +14,7 @@ import {
   BarChart3,
   Settings,
   Play,
+  Download,
 } from "lucide-react";
 import { formatDate, getStatusColor } from "@/lib/utils";
 import type { Metadata } from "next";
@@ -119,6 +120,17 @@ export default async function ProjectDetailPage({ params }: Props) {
                 Settings
               </Link>
             </Button>
+            {approvedCount > 0 && (
+              <Button variant="outline" size="sm" asChild>
+                <a
+                  href={`/api/projects/${project.id}/export?format=zip&status=APPROVED`}
+                  download
+                >
+                  <Download className="h-4 w-4" />
+                  Export ZIP
+                </a>
+              </Button>
+            )}
             <Button size="sm" asChild>
               <Link href={`/migration?projectId=${project.id}`}>
                 <Play className="h-4 w-4" />

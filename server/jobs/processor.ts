@@ -28,8 +28,9 @@ async function processNotification(job: Job<SendNotificationJob>) {
 
 async function processExport(job: Job<ExportProjectJob>) {
   const { projectId, format } = job.data;
-  console.log(`[Worker] Exporting project ${projectId} as ${format}`);
-  // Build export archive
+  // Export is handled synchronously via GET /api/projects/:projectId/export.
+  // This worker slot is reserved for large async exports (e.g. S3 upload) in future.
+  console.log(`[Worker] Export job acknowledged for project ${projectId} format=${format} — use the API route for download.`);
 }
 
 // ─── Worker Instantiation ─────────────────────────────────────────────────────
