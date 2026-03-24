@@ -1,12 +1,15 @@
 /**
- * SAP RFC Connector
+ * SAP RFC Connector — SOAP HTTP Transport
  *
- * Requires:
- *   npm install node-rfc
- *   SAP NW RFC SDK installed on the system (download from SAP Support Portal)
+ * Uses SAP's built-in SOAP RFC adapter (available since BASIS 6.40).
+ * No native addon or SAP NW RFC SDK required.
+ *
+ * SAP must have the SOAP RFC service active:
+ *   Transaction SICF → /sap/bc/soap/rfc → Activate
  */
 
 import { ObjectType } from "@prisma/client";
+import { XMLParser } from "fast-xml-parser";
 
 // ─── Custom Errors ────────────────────────────────────────────────────────────
 
@@ -40,6 +43,8 @@ export interface SAPConnectionParams {
   user: string;
   password: string;
   lang?: string; // default "EN"
+  port?: number; // explicit port; defaults to 8000 + parseInt(systemNumber)
+  useSSL?: boolean; // default false
 }
 
 /** SAP ABAP object type codes */
@@ -71,12 +76,13 @@ export interface SAPSystemInfo {
   databaseType: string;
 }
 
-// ─── Internal RFC Types (node-rfc ships loose types in some versions) ─────────
+// ─── Internal Types ───────────────────────────────────────────────────────────
 
-type RfcScalar = string | number | Buffer;
+type RfcScalar = string | number;
 type RfcTable = Record<string, RfcScalar>[];
 type RfcStructure = Record<string, RfcScalar>;
-type RfcResult = Record<string, RfcScalar | RfcTable | RfcStructure>;
+/** Parsed RFC response — field values may be scalars, structs, or tables */
+type RfcResult = Record<string, RfcScalar | RfcTable | RfcStructure | unknown>;
 
 // ─── Type-code ↔ Prisma Enum Mapping ─────────────────────────────────────────
 
@@ -102,39 +108,108 @@ const SUPPORTED_OBJECT_TYPES: SAPObjectTypeCode[] = [
   "DOMA",
 ];
 
+// ─── XML Parser (shared instance) ────────────────────────────────────────────
+
+const xmlParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: "@_",
+  // Strip namespace prefixes so we can access <urn:FOO> as just FOO
+  transformTagName: (name: string) => name.replace(/^[^:]+:/, ""),
+  // SAP tables come back as <item> elements — always treat as array
+  isArray: (name: string) => name === "item",
+  parseTagValue: true,
+  trimValues: true,
+});
+
+// ─── SOAP Helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Serialise an RFC parameter value to an XML fragment.
+ * Handles: scalar (string/number), flat object (structure), array of objects (table rows).
+ */
+function serializeParam(name: string, value: unknown): string {
+  if (Array.isArray(value)) {
+    // Table parameter — wrap each entry in <item>
+    const rows = value
+      .map((row: Record<string, unknown>) => {
+        const fields = Object.entries(row)
+          .map(([k, v]) => `<${k}>${escXml(String(v ?? ""))}</${k}>`)
+          .join("");
+        return `<item>${fields}</item>`;
+      })
+      .join("");
+    return `<${name}>${rows}</${name}>`;
+  }
+
+  if (value !== null && typeof value === "object") {
+    // Structure parameter
+    const fields = Object.entries(value as Record<string, unknown>)
+      .map(([k, v]) => `<${k}>${escXml(String(v ?? ""))}</${k}>`)
+      .join("");
+    return `<${name}>${fields}</${name}>`;
+  }
+
+  // Scalar
+  return `<${name}>${escXml(String(value ?? ""))}</${name}>`;
+}
+
+function escXml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function buildSoapEnvelope(
+  funcName: string,
+  params: Record<string, unknown>,
+): string {
+  const paramXml = Object.entries(params)
+    .map(([k, v]) => serializeParam(k, v))
+    .join("\n      ");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope
+  xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/"
+  xmlns:urn="urn:sap-com:document:sap:rfc:functions">
+  <SOAP-ENV:Body>
+    <urn:${funcName}>
+      ${paramXml}
+    </urn:${funcName}>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>`;
+}
+
 // ─── SAPConnector ─────────────────────────────────────────────────────────────
 
-type RfcClient = {
-  open: () => Promise<void>;
-  close: () => Promise<void>;
-  call: (fn: string, params: Record<string, unknown>) => Promise<RfcResult>;
-};
-
 export class SAPConnector {
-  private client: RfcClient | null = null;
+  private baseUrl: string;
+  private authHeader: string;
   private connected = false;
 
-  constructor(private readonly params: SAPConnectionParams) {}
+  constructor(private readonly params: SAPConnectionParams) {
+    const scheme = params.useSSL ? "https" : "http";
+    const port =
+      params.port ?? (8000 + parseInt(params.systemNumber ?? "00", 10));
+    this.baseUrl = `${scheme}://${params.host}:${port}/sap/bc/soap/rfc?sap-client=${params.client}`;
+    this.authHeader =
+      "Basic " +
+      Buffer.from(`${params.user}:${params.password}`).toString("base64");
+  }
 
   // ── Connection ──────────────────────────────────────────────────────────────
 
+  /** Verifies connectivity with a lightweight RFC_PING call. */
   async connect(): Promise<void> {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const nodeRfc = require("node-rfc") as {
-        Client: new (params: Record<string, string>) => RfcClient;
-      };
-
-      this.client = new nodeRfc.Client({
-        host: this.params.host,
-        sysnr: this.params.systemNumber,
-        client: this.params.client,
-        user: this.params.user,
-        passwd: this.params.password,
-        lang: this.params.lang ?? "EN",
-      });
-
-      await this.client.open();
+      const ok = await this.ping();
+      if (!ok) {
+        throw new SAPConnectionError(
+          `SAP SOAP endpoint did not respond to RFC_PING at ${this.baseUrl}`,
+        );
+      }
       this.connected = true;
     } catch (err) {
       if (err instanceof SAPConnectionError) throw err;
@@ -145,15 +220,9 @@ export class SAPConnector {
     }
   }
 
+  /** No-op for SOAP transport — stateless HTTP, nothing to close. */
   async disconnect(): Promise<void> {
-    if (this.client && this.connected) {
-      try {
-        await this.client.close();
-      } finally {
-        this.connected = false;
-        this.client = null;
-      }
-    }
+    this.connected = false;
   }
 
   /** Run connect → work → disconnect safely. */
@@ -166,28 +235,112 @@ export class SAPConnector {
     }
   }
 
-  // ── RFC Call Wrapper ────────────────────────────────────────────────────────
+  // ── RFC Call ─────────────────────────────────────────────────────────────────
 
   private async call(
     funcName: string,
     params: Record<string, unknown> = {},
   ): Promise<RfcResult> {
-    if (!this.connected || !this.client) {
-      throw new SAPConnectionError(
-        "Not connected to SAP. Call connect() first.",
-      );
-    }
+    const body = buildSoapEnvelope(funcName, params);
+
+    let res: Response;
     try {
-      return await this.client.call(funcName, params);
+      res = await fetch(this.baseUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/xml; charset=utf-8",
+          SOAPAction: funcName,
+          Authorization: this.authHeader,
+          Accept: "text/xml",
+        },
+        body,
+      });
     } catch (err) {
       throw new SAPConnectionError(
-        `RFC ${funcName} failed: ${err instanceof Error ? err.message : String(err)}`,
+        `HTTP request to SAP failed (${funcName}): ${err instanceof Error ? err.message : String(err)}`,
         err,
       );
     }
+
+    const text = await res.text();
+
+    if (!res.ok) {
+      // Try to extract SOAP fault message for better DX
+      const faultMatch = /<faultstring[^>]*>([^<]+)<\/faultstring>/i.exec(text);
+      const detail = faultMatch ? faultMatch[1] : `HTTP ${res.status}`;
+      throw new SAPConnectionError(`RFC ${funcName} failed: ${detail}`);
+    }
+
+    const parsed = xmlParser.parse(text) as Record<string, unknown>;
+
+    // Check for SOAP fault in a 200 OK response (SAP occasionally does this)
+    const fault = this.dig(parsed, ["Envelope", "Body", "Fault"]) as
+      | Record<string, unknown>
+      | undefined;
+    if (fault) {
+      const msg = String(fault["faultstring"] ?? "Unknown SOAP fault");
+      throw new SAPConnectionError(`RFC ${funcName} SOAP fault: ${msg}`);
+    }
+
+    // Navigate to <Envelope><Body><FUNCNAME.Response>
+    const responseKey = `${funcName}.Response`;
+    const responseBody = this.dig(parsed, [
+      "Envelope",
+      "Body",
+      responseKey,
+    ]) as RfcResult | undefined;
+
+    if (!responseBody) {
+      throw new SAPConnectionError(
+        `RFC ${funcName}: unexpected response structure — missing ${responseKey}`,
+      );
+    }
+
+    return this.normalizeResult(responseBody);
   }
 
-  // ── Health Check ────────────────────────────────────────────────────────────
+  /** Recursively navigate an object by key path, case-insensitively. */
+  private dig(obj: unknown, keys: string[]): unknown {
+    let cur = obj;
+    for (const key of keys) {
+      if (cur == null || typeof cur !== "object") return undefined;
+      const map = cur as Record<string, unknown>;
+      // Exact match first, then case-insensitive fallback
+      if (key in map) {
+        cur = map[key];
+      } else {
+        const lower = key.toLowerCase();
+        const found = Object.keys(map).find((k) => k.toLowerCase() === lower);
+        cur = found ? map[found] : undefined;
+      }
+    }
+    return cur;
+  }
+
+  /**
+   * Normalises parsed XML output to resemble node-rfc output:
+   * - Objects with a single "item" key → flat array
+   * - Scalar item arrays left as-is
+   */
+  private normalizeResult(result: RfcResult): RfcResult {
+    const out: RfcResult = {};
+    for (const [key, value] of Object.entries(result)) {
+      if (
+        value !== null &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        "item" in (value as Record<string, unknown>)
+      ) {
+        // SAP table → unwrap to array
+        out[key] = (value as Record<string, unknown>)["item"] as RfcTable;
+      } else {
+        out[key] = value;
+      }
+    }
+    return out;
+  }
+
+  // ── Health Check ─────────────────────────────────────────────────────────────
 
   async ping(): Promise<boolean> {
     try {
@@ -198,28 +351,23 @@ export class SAPConnector {
     }
   }
 
-  // ── System Info ─────────────────────────────────────────────────────────────
+  // ── System Info ──────────────────────────────────────────────────────────────
 
   async getSystemInfo(): Promise<SAPSystemInfo> {
     const result = await this.call("RFC_SYSTEM_INFO");
-    const info = result.RFCSI_EXPORT as RfcStructure;
+    const info = (result["RFCSI_EXPORT"] ?? {}) as RfcStructure;
 
     return {
-      systemId: String(info.RFCSYSID ?? ""),
-      hostname: String(info.RFCHOST ?? ""),
-      sapRelease: String(info.RFCRELEASE ?? ""),
-      kernelRelease: String(info.RFCKERNRL ?? ""),
-      databaseType: String(info.RFCDBSYS ?? ""),
+      systemId: String(info["RFCSYSID"] ?? ""),
+      hostname: String(info["RFCHOST"] ?? ""),
+      sapRelease: String(info["RFCRELEASE"] ?? ""),
+      kernelRelease: String(info["RFCKERNRL"] ?? ""),
+      databaseType: String(info["RFCDBSYS"] ?? ""),
     };
   }
 
-  // ── Object Listing ──────────────────────────────────────────────────────────
+  // ── Object Listing ───────────────────────────────────────────────────────────
 
-  /**
-   * Lists all custom ABAP objects (Z* and Y* namespaces) across all supported
-   * types.  Uses REPOSITORY_OBJECT_GET for individual metadata and RFC_READ_TABLE
-   * on TADIR for bulk listing.
-   */
   async listCustomObjects(): Promise<
     Array<{
       objectType: SAPObjectTypeCode;
@@ -251,11 +399,10 @@ export class SAPConnector {
             ],
           });
 
-          for (const row of result.DATA as RfcTable) {
-            const parts = String(row.WA ?? "")
+          for (const row of (result["DATA"] as RfcTable) ?? []) {
+            const parts = String(row["WA"] ?? "")
               .split("|")
               .map((s) => s.trim());
-            // parts[0] = OBJECT, parts[1] = OBJ_NAME, parts[2] = DEVCLASS
             if (parts[1]) {
               objects.push({
                 objectType,
@@ -276,7 +423,7 @@ export class SAPConnector {
     return objects;
   }
 
-  // ── Source Code Fetching ────────────────────────────────────────────────────
+  // ── Source Code Fetching ─────────────────────────────────────────────────────
 
   async fetchSourceCode(
     objectType: SAPObjectTypeCode,
@@ -302,29 +449,28 @@ export class SAPConnector {
     }
   }
 
-  // ── Program / Report ───────────────────────────────────────────────────────
+  // ── Program / Report ──────────────────────────────────────────────────────────
 
   private async fetchProgramSource(programName: string): Promise<string> {
     const result = await this.call("READ_REPORT", {
       PROGRAM: programName,
       WITH_INCLUDES: "X",
     });
-    const lines = result.SOURCE_EXTENDED as RfcTable;
-    if (!lines?.length) {
+    const lines = (result["SOURCE_EXTENDED"] as RfcTable) ?? [];
+    if (!lines.length) {
       throw new SAPExtractionError(
         `No source returned for program ${programName}`,
         programName,
       );
     }
-    return lines.map((row) => String(row.LINE ?? "")).join("\n");
+    return lines.map((row) => String(row["LINE"] ?? "")).join("\n");
   }
 
-  // ── Function Group ─────────────────────────────────────────────────────────
+  // ── Function Group ────────────────────────────────────────────────────────────
 
   private async fetchFunctionGroupSource(
     functionGroupName: string,
   ): Promise<string> {
-    // List all function modules in this group via TFDIR
     const tfdir = await this.call("RFC_READ_TABLE", {
       QUERY_TABLE: "TFDIR",
       DELIMITER: "|",
@@ -337,18 +483,16 @@ export class SAPConnector {
       `* ` + "─".repeat(60),
     ];
 
-    for (const row of tfdir.DATA as RfcTable) {
-      const funcName = String(row.WA ?? "").trim();
+    for (const row of (tfdir["DATA"] as RfcTable) ?? []) {
+      const funcName = String(row["WA"] ?? "").trim();
       if (!funcName) continue;
       try {
         const result = await this.call("RPY_FUNCTIONMODULE_READ", {
           FUNCTIONNAME: funcName,
         });
-        const srcLines = result.SOURCE_LINES as RfcTable;
-        const source = srcLines?.map((l) => String(l.LINE ?? "")).join("\n");
-        parts.push(
-          `\n* Function Module: ${funcName}\n${source ?? "* (no source)"}`,
-        );
+        const srcLines = (result["SOURCE_LINES"] as RfcTable) ?? [];
+        const source = srcLines.map((l) => String(l["LINE"] ?? "")).join("\n");
+        parts.push(`\n* Function Module: ${funcName}\n${source || "* (no source)"}`);
       } catch {
         parts.push(`\n* Function Module: ${funcName}\n* (source unavailable)`);
       }
@@ -357,7 +501,7 @@ export class SAPConnector {
     return parts.join("\n");
   }
 
-  // ── ABAP Class ─────────────────────────────────────────────────────────────
+  // ── ABAP Class ────────────────────────────────────────────────────────────────
 
   private async fetchClassSource(className: string): Promise<string> {
     try {
@@ -367,37 +511,36 @@ export class SAPConnector {
       });
 
       const parts: string[] = [`* ABAP Class: ${className}`];
-      const methods = result.METHODS as RfcTable;
+      const methods = (result["METHODS"] as RfcTable) ?? [];
 
-      if (methods?.length) {
-        for (const method of methods) {
-          const methodName = String(method.CPDNAME ?? method.CMPNAME ?? "");
-          if (!methodName) continue;
-          try {
-            const mResult = await this.call("RPY_CLASSMETHOD_SOURCE_GET", {
-              CLSNAME: className,
-              CPDNAME: methodName,
-            });
-            const srcLines = mResult.RESULT_SOURCE as RfcTable;
-            const source = srcLines?.map((l) => String(l.LINE ?? "")).join("\n");
-            parts.push(`\n* Method: ${methodName}\n${source ?? ""}`);
-          } catch {
-            parts.push(`\n* Method: ${methodName}\n* (source unavailable)`);
-          }
+      for (const method of methods) {
+        const methodName = String(method["CPDNAME"] ?? method["CMPNAME"] ?? "");
+        if (!methodName) continue;
+        try {
+          const mResult = await this.call("RPY_CLASSMETHOD_SOURCE_GET", {
+            CLSNAME: className,
+            CPDNAME: methodName,
+          });
+          const srcLines = (mResult["RESULT_SOURCE"] as RfcTable) ?? [];
+          const source = srcLines.map((l) => String(l["LINE"] ?? "")).join("\n");
+          parts.push(`\n* Method: ${methodName}\n${source}`);
+        } catch {
+          parts.push(`\n* Method: ${methodName}\n* (source unavailable)`);
         }
       }
 
       return parts.join("\n") || `* Class ${className} (no methods found)`;
     } catch {
-      // Fallback: the class pool program is named like CL_<CLASS>=========CP
-      const poolName = `CL_${className}`.padEnd(30, "=").substring(0, 30) + "CP";
+      // Fallback: the class pool program is named CL_<CLASS>=========CP
+      const poolName =
+        `CL_${className}`.padEnd(30, "=").substring(0, 30) + "CP";
       return this.fetchProgramSource(poolName).catch(
         () => `* Class ${className} source unavailable`,
       );
     }
   }
 
-  // ── ABAP Interface ─────────────────────────────────────────────────────────
+  // ── ABAP Interface ────────────────────────────────────────────────────────────
 
   private async fetchInterfaceSource(interfaceName: string): Promise<string> {
     try {
@@ -408,20 +551,14 @@ export class SAPConnector {
 
       const lines: string[] = [`INTERFACE ${interfaceName} PUBLIC.`];
 
-      const attributes = result.ATTRIBUTES as RfcTable;
-      if (attributes?.length) {
-        for (const attr of attributes) {
-          lines.push(
-            `  DATA ${String(attr.CMPNAME ?? "").padEnd(30)} TYPE ${String(attr.TYPTYPE ?? "")} ${String(attr.TYPE ?? "")}.`,
-          );
-        }
+      for (const attr of (result["ATTRIBUTES"] as RfcTable) ?? []) {
+        lines.push(
+          `  DATA ${String(attr["CMPNAME"] ?? "").padEnd(30)} TYPE ${String(attr["TYPTYPE"] ?? "")} ${String(attr["TYPE"] ?? "")}.`,
+        );
       }
 
-      const methods = result.METHODS as RfcTable;
-      if (methods?.length) {
-        for (const method of methods) {
-          lines.push(`  METHODS ${String(method.CMPNAME ?? "")}.`);
-        }
+      for (const method of (result["METHODS"] as RfcTable) ?? []) {
+        lines.push(`  METHODS ${String(method["CMPNAME"] ?? "")}.`);
       }
 
       lines.push("ENDINTERFACE.");
@@ -431,7 +568,7 @@ export class SAPConnector {
     }
   }
 
-  // ── DDIC: Table ────────────────────────────────────────────────────────────
+  // ── DDIC: Table ───────────────────────────────────────────────────────────────
 
   private async fetchTableDefinition(tableName: string): Promise<string> {
     try {
@@ -441,22 +578,22 @@ export class SAPConnector {
         LANGU: "E",
       });
 
-      const header = result.DD02V as RfcStructure;
-      const fields = result.DFIES_TAB as RfcTable;
+      const header = (result["DD02V"] ?? {}) as RfcStructure;
+      const fields = (result["DFIES_TAB"] as RfcTable) ?? [];
 
       const lines: string[] = [
         `* SAP Transparent Table: ${tableName}`,
-        `* Description : ${header?.DDTEXT ?? ""}`,
-        `* Table Class : ${header?.TABCLASS ?? ""}`,
-        `* Delivery Cat: ${header?.CONTFLAG ?? ""}`,
+        `* Description : ${header["DDTEXT"] ?? ""}`,
+        `* Table Class : ${header["TABCLASS"] ?? ""}`,
+        `* Delivery Cat: ${header["CONTFLAG"] ?? ""}`,
         `*`,
         `* Fields:`,
         `* ${"FIELDNAME".padEnd(30)} ${"DATATYPE".padEnd(10)} ${"LENGTH".padEnd(8)} DESCRIPTION`,
       ];
 
-      for (const field of fields ?? []) {
+      for (const field of fields) {
         lines.push(
-          `*   ${String(field.FIELDNAME ?? "").padEnd(30)} ${String(field.DATATYPE ?? "").padEnd(10)} ${String(field.LENG ?? "").padEnd(8)} ${field.FIELDTEXT ?? ""}`,
+          `*   ${String(field["FIELDNAME"] ?? "").padEnd(30)} ${String(field["DATATYPE"] ?? "").padEnd(10)} ${String(field["LENG"] ?? "").padEnd(8)} ${field["FIELDTEXT"] ?? ""}`,
         );
       }
 
@@ -466,7 +603,7 @@ export class SAPConnector {
     }
   }
 
-  // ── DDIC: View ─────────────────────────────────────────────────────────────
+  // ── DDIC: View ────────────────────────────────────────────────────────────────
 
   private async fetchViewDefinition(viewName: string): Promise<string> {
     try {
@@ -476,20 +613,20 @@ export class SAPConnector {
         LANGU: "E",
       });
 
-      const header = result.DD25V as RfcStructure;
-      const fields = result.DFIES_TAB as RfcTable;
+      const header = (result["DD25V"] ?? {}) as RfcStructure;
+      const fields = (result["DFIES_TAB"] as RfcTable) ?? [];
 
       const lines: string[] = [
         `* SAP View: ${viewName}`,
-        `* Description : ${header?.DDTEXT ?? ""}`,
-        `* View Type   : ${header?.VIEWCLASS ?? ""}`,
+        `* Description : ${header["DDTEXT"] ?? ""}`,
+        `* View Type   : ${header["VIEWCLASS"] ?? ""}`,
         `*`,
         `* Fields:`,
       ];
 
-      for (const field of fields ?? []) {
+      for (const field of fields) {
         lines.push(
-          `*   ${String(field.FIELDNAME ?? "").padEnd(30)} ${String(field.DATATYPE ?? "").padEnd(10)} ${field.LENG ?? ""}`,
+          `*   ${String(field["FIELDNAME"] ?? "").padEnd(30)} ${String(field["DATATYPE"] ?? "").padEnd(10)} ${field["LENG"] ?? ""}`,
         );
       }
 
@@ -499,7 +636,7 @@ export class SAPConnector {
     }
   }
 
-  // ── DDIC: Data Element ─────────────────────────────────────────────────────
+  // ── DDIC: Data Element ────────────────────────────────────────────────────────
 
   private async fetchDataElementDefinition(dtelName: string): Promise<string> {
     try {
@@ -509,22 +646,22 @@ export class SAPConnector {
         LANGU: "E",
       });
 
-      const header = result.DD04V as RfcStructure;
+      const header = (result["DD04V"] ?? {}) as RfcStructure;
       return [
         `* SAP Data Element: ${dtelName}`,
-        `* Description: ${header?.DDTEXT ?? ""}`,
-        `* Domain     : ${header?.DOMNAME ?? ""}`,
-        `* Data Type  : ${header?.DATATYPE ?? ""}`,
-        `* Length     : ${header?.LENG ?? ""}`,
-        `* Decimals   : ${header?.DECIMALS ?? ""}`,
-        `* Search Help: ${header?.SHLPNAME ?? ""}`,
+        `* Description: ${header["DDTEXT"] ?? ""}`,
+        `* Domain     : ${header["DOMNAME"] ?? ""}`,
+        `* Data Type  : ${header["DATATYPE"] ?? ""}`,
+        `* Length     : ${header["LENG"] ?? ""}`,
+        `* Decimals   : ${header["DECIMALS"] ?? ""}`,
+        `* Search Help: ${header["SHLPNAME"] ?? ""}`,
       ].join("\n");
     } catch {
       return `* Data Element ${dtelName} definition unavailable`;
     }
   }
 
-  // ── DDIC: Domain ───────────────────────────────────────────────────────────
+  // ── DDIC: Domain ──────────────────────────────────────────────────────────────
 
   private async fetchDomainDefinition(domainName: string): Promise<string> {
     try {
@@ -534,23 +671,23 @@ export class SAPConnector {
         LANGU: "E",
       });
 
-      const header = result.DD01V as RfcStructure;
-      const fixedValues = result.DD07V_TAB as RfcTable;
+      const header = (result["DD01V"] ?? {}) as RfcStructure;
+      const fixedValues = (result["DD07V_TAB"] as RfcTable) ?? [];
 
       const lines: string[] = [
         `* SAP Domain: ${domainName}`,
-        `* Description: ${header?.DDTEXT ?? ""}`,
-        `* Data Type  : ${header?.DATATYPE ?? ""}`,
-        `* Length     : ${header?.LENG ?? ""}`,
-        `* Decimals   : ${header?.DECIMALS ?? ""}`,
-        `* Conv. Routine: ${header?.CONVEXIT ?? ""}`,
+        `* Description  : ${header["DDTEXT"] ?? ""}`,
+        `* Data Type    : ${header["DATATYPE"] ?? ""}`,
+        `* Length       : ${header["LENG"] ?? ""}`,
+        `* Decimals     : ${header["DECIMALS"] ?? ""}`,
+        `* Conv. Routine: ${header["CONVEXIT"] ?? ""}`,
       ];
 
-      if (fixedValues?.length) {
+      if (fixedValues.length) {
         lines.push(`*`, `* Fixed Values:`);
         for (const val of fixedValues) {
           lines.push(
-            `*   ${String(val.DOMVALUE_L ?? "").padEnd(20)} ${val.DDTEXT ?? ""}`,
+            `*   ${String(val["DOMVALUE_L"] ?? "").padEnd(20)} ${val["DDTEXT"] ?? ""}`,
           );
         }
       }
@@ -561,7 +698,7 @@ export class SAPConnector {
     }
   }
 
-  // ── Full Object Extraction ──────────────────────────────────────────────────
+  // ── Full Object Extraction ────────────────────────────────────────────────────
 
   async extractObject(
     objectType: SAPObjectTypeCode,

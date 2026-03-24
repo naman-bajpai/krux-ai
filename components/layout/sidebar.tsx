@@ -81,7 +81,7 @@ export function Sidebar() {
             </div>
             {!collapsed && (
               <span className="font-semibold text-sm truncate text-sidebar-foreground">
-                AI Migrator
+                Krux 
               </span>
             )}
           </Link>

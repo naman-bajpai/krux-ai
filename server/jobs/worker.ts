@@ -15,6 +15,7 @@ async function shutdown() {
     workers.migrationWorker.close(),
     workers.notificationWorker.close(),
     workers.exportWorker.close(),
+    workers.sapExtractionWorker.close(),
   ]);
   process.exit(0);
 }

@@ -245,15 +245,29 @@ export const migrationRouter = createTRPCRouter({
   pendingReview: reviewerProcedure
     .input(
       z.object({
-        projectId: z.string(),
+        projectId: z.string().optional(),
         limit: z.number().int().min(1).max(50).default(10),
       })
     )
     .query(async ({ ctx, input }) => {
+      const orgId = ctx.session.user.organizationId;
+
+      const where: any = {
+        status: { in: [ObjectStatus.CONVERTED, ObjectStatus.REVIEWED] },
+      };
+
+      if (input.projectId) {
+        where.projectId = input.projectId;
+      } else if (orgId) {
+        where.project = { orgId };
+      }
+
+      // If user has no org (should be rare), return empty list rather than throwing.
+      if (!input.projectId && !orgId) return [];
+
       return ctx.db.migrationObject.findMany({
         where: {
-          projectId: input.projectId,
-          status: { in: [ObjectStatus.CONVERTED, ObjectStatus.REVIEWED] },
+          ...where,
         },
         orderBy: [
           { confidenceScore: "asc" }, // Review low confidence first
