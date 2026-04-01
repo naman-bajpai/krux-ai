@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useProject } from "@/components/providers/project-provider";
 import { trpc } from "@/lib/trpc";
 import {
   Dialog,
@@ -21,14 +22,26 @@ import { toast } from "sonner";
 interface CreateProjectDialogProps {
   children: React.ReactNode;
   orgId?: string;
+  /** Controlled open state (optional) */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 export function CreateProjectDialog({
   children,
   orgId,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
 }: CreateProjectDialogProps) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const { setProject } = useProject();
+  const [internalOpen, setInternalOpen] = useState(false);
+
+  const open = controlledOpen ?? internalOpen;
+  const setOpen = (v: boolean) => {
+    setInternalOpen(v);
+    controlledOnOpenChange?.(v);
+  };
 
   const [form, setForm] = useState({
     name: "",
@@ -42,13 +55,9 @@ export function CreateProjectDialog({
     onSuccess: (project) => {
       toast.success(`Project "${project.name}" created`);
       setOpen(false);
-      setForm({
-        name: "",
-        description: "",
-        sapSystemUrl: "",
-        sapRelease: "",
-        targetStack: "",
-      });
+      setForm({ name: "", description: "", sapSystemUrl: "", sapRelease: "", targetStack: "" });
+      // Auto-select the new project in the global context
+      setProject(project.id, project.name);
       router.push(`/projects/${project.id}`);
       router.refresh();
     },

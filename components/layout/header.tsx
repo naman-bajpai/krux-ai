@@ -11,6 +11,9 @@ import {
   Building2,
   Plus,
   Search,
+  Check,
+  FolderKanban,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -25,65 +28,127 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { getInitials } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { trpc } from "@/lib/trpc";
+import { useProject } from "@/components/providers/project-provider";
+import { cn } from "@/lib/utils";
 
-interface HeaderProps {
-  projectName?: string;
-}
-
-export function Header({ projectName }: HeaderProps) {
+export function Header() {
   const { data: session } = useSession();
   const router = useRouter();
   const user = session?.user;
 
-  return (
-    <header className="abstract-topbar flex h-14 shrink-0 items-center gap-4 px-4">
-      {/* Breadcrumb / Project context */}
-      <div className="flex items-center gap-2 flex-1 min-w-0">
-        {projectName && (
-          <>
-            <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
-            <span className="text-sm text-muted-foreground">
-              {session?.user?.organizationId ? "Organization" : "Personal"}
-            </span>
-            <span className="text-muted-foreground">/</span>
-          </>
-        )}
+  const { projectId, projectName, setProject, clearProject } = useProject();
 
-        {/* Project Switcher */}
+  // Fetch project list for switcher
+  const { data: projectList } = trpc.project.list.useQuery(
+    { limit: 20 },
+    { staleTime: 30_000 }
+  );
+
+  const handleSelectProject = (id: string, name: string) => {
+    setProject(id, name);
+    // Navigate to this project's migration workspace
+    router.push(`/migration?projectId=${id}`);
+  };
+
+  return (
+    <header className="abstract-topbar flex h-14 shrink-0 items-center gap-3 px-4">
+      {/* Project Switcher */}
+      <div className="flex items-center gap-2 flex-1 min-w-0">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="h-9 gap-1.5 rounded-xl px-3 text-sm font-medium"
+              className="h-9 gap-2 rounded-xl px-3 text-sm font-medium max-w-[260px]"
             >
-              <span className="truncate max-w-[200px]">
+              <FolderKanban className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <span className="truncate">
                 {projectName ?? "Select Project"}
               </span>
-              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0 ml-auto" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-64">
-            <DropdownMenuLabel>Projects</DropdownMenuLabel>
+
+          <DropdownMenuContent align="start" className="w-72">
+            <DropdownMenuLabel className="flex items-center justify-between">
+              <span>Projects</span>
+              {projectId && (
+                <button
+                  onClick={clearProject}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  title="Clear selection"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push("/projects")}>
-              <Building2 className="h-4 w-4" />
-              View all projects
-            </DropdownMenuItem>
+
+            {/* Action items */}
             <DropdownMenuItem onClick={() => router.push("/projects/new")}>
               <Plus className="h-4 w-4" />
               New project
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/projects")}>
+              <Building2 className="h-4 w-4" />
+              View all projects
+            </DropdownMenuItem>
+
+            {/* Project list */}
+            {projectList?.projects && projectList.projects.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground py-1">
+                  Recent
+                </DropdownMenuLabel>
+                {projectList.projects.map((p) => (
+                  <DropdownMenuItem
+                    key={p.id}
+                    onClick={() => handleSelectProject(p.id, p.name)}
+                    className="flex items-center gap-2 pr-2"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="truncate text-sm">{p.name}</p>
+                      <p className="text-[11px] text-muted-foreground truncate">
+                        {p.organization?.name ?? "Personal"} ·{" "}
+                        <span className={cn(
+                          p.status === "ACTIVE" && "text-green-600 dark:text-green-400",
+                          p.status === "DRAFT" && "text-muted-foreground",
+                          p.status === "PAUSED" && "text-yellow-600 dark:text-yellow-400",
+                        )}>
+                          {p.status}
+                        </span>
+                      </p>
+                    </div>
+                    {p.id === projectId && (
+                      <Check className="h-3.5 w-3.5 text-primary shrink-0" />
+                    )}
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Active project badge (quick nav) */}
+        {projectId && (
+          <div className="hidden sm:flex items-center gap-1.5 text-muted-foreground">
+            <span className="text-xs">/</span>
+            <button
+              onClick={() => router.push(`/projects/${projectId}`)}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors truncate max-w-[140px]"
+            >
+              {projectName}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Search */}
       <Button
         variant="outline"
-        className="abstract-input hidden h-9 w-64 justify-start gap-2 rounded-xl text-sm font-normal text-muted-foreground shadow-none md:flex"
-        onClick={() => {
-          /* TODO: open command palette */
-        }}
+        className="abstract-input hidden h-9 w-56 justify-start gap-2 rounded-xl text-sm font-normal text-muted-foreground shadow-none md:flex"
+        onClick={() => { /* TODO: command palette */ }}
       >
         <Search className="h-3.5 w-3.5" />
         <span>Search...</span>
@@ -127,14 +192,12 @@ export function Header({ projectName }: HeaderProps) {
           <DropdownMenuLabel className="font-normal">
             <div className="flex flex-col gap-1">
               <p className="text-sm font-medium">{user?.name}</p>
-              <p className="text-xs text-muted-foreground truncate">
-                {user?.email}
-              </p>
+              <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
-            <DropdownMenuItem onClick={() => router.push("/settings/profile")}>
+            <DropdownMenuItem onClick={() => router.push("/settings")}>
               <User className="h-4 w-4" />
               Profile
             </DropdownMenuItem>

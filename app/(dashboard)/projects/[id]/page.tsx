@@ -227,9 +227,10 @@ export default async function ProjectDetailPage({ params }: Props) {
           ) : (
             <div className="divide-y">
               {recentObjects.map((obj: any) => (
-                <div
+                <Link
                   key={obj.id}
-                  className="flex items-center justify-between px-6 py-3 hover:bg-muted/50 transition-colors"
+                  href={`/review?projectId=${project.id}&objectId=${obj.id}`}
+                  className="flex items-center justify-between px-6 py-3 hover:bg-muted/50 transition-colors cursor-pointer"
                 >
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">
@@ -251,7 +252,7 @@ export default async function ProjectDetailPage({ params }: Props) {
                       {obj.status}
                     </span>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}

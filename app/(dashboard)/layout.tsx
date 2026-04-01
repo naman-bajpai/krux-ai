@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { ProjectProvider } from "@/components/providers/project-provider";
 
 export default async function DashboardLayout({
   children,
@@ -16,17 +17,19 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-transparent">
-      {/* Sidebar */}
-      <Sidebar />
+    <ProjectProvider>
+      <div className="flex h-screen overflow-hidden bg-transparent">
+        {/* Sidebar */}
+        <Sidebar />
 
-      {/* Main content area */}
-      <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-y-auto">
-          <div className="h-full">{children}</div>
-        </main>
+        {/* Main content area */}
+        <div className="flex flex-1 flex-col min-w-0 overflow-hidden">
+          <Header />
+          <main className="flex-1 overflow-y-auto">
+            <div className="h-full">{children}</div>
+          </main>
+        </div>
       </div>
-    </div>
+    </ProjectProvider>
   );
 }

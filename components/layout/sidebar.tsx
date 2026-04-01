@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { useState } from "react";
+import { useProject } from "@/components/providers/project-provider";
 
 const navItems = [
   {
@@ -61,9 +62,20 @@ const bottomNavItems = [
   },
 ];
 
+// Items that should carry the active projectId as a query param when available
+const PROJECT_AWARE = new Set(["/migration", "/review"]);
+
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const { projectId } = useProject();
+
+  function resolveHref(href: string) {
+    if (projectId && PROJECT_AWARE.has(href)) {
+      return `${href}?projectId=${projectId}`;
+    }
+    return href;
+  }
 
   return (
     <TooltipProvider delayDuration={0}>
@@ -112,12 +124,13 @@ export function Sidebar() {
             {navItems.map((item) => {
               const isActive =
                 pathname === item.href || pathname.startsWith(item.href + "/");
+              const href = resolveHref(item.href);
 
               return collapsed ? (
                 <Tooltip key={item.href}>
                   <TooltipTrigger asChild>
                     <Link
-                      href={item.href}
+                      href={href}
                       className={cn(
                         "flex h-9 w-9 mx-auto items-center justify-center rounded-xl transition-colors",
                         isActive
@@ -133,7 +146,7 @@ export function Sidebar() {
               ) : (
                 <Link
                   key={item.href}
-                  href={item.href}
+                  href={href}
                   className={cn(
                     "flex h-9 items-center gap-3 rounded-xl px-3 text-sm transition-colors",
                     isActive

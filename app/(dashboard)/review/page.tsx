@@ -5,6 +5,7 @@ import { trpc } from "@/lib/trpc";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CodeEditor } from "@/components/editor/code-editor";
 import {
   ClipboardCheck,
   CheckCircle,
@@ -29,7 +30,8 @@ type Tab = "converted" | "original";
 export default function ReviewPage() {
   const searchParams = useSearchParams();
   const projectId = searchParams.get("projectId") ?? undefined;
-  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(null);
+  const initialObjectId = searchParams.get("objectId");
+  const [selectedObjectId, setSelectedObjectId] = useState<string | null>(initialObjectId);
   const [codeTab, setCodeTab] = useState<Tab>("converted");
 
   // Modify mode state
@@ -305,13 +307,15 @@ export default function ReviewPage() {
                 {isModifying ? (
                   <div className="space-y-3">
                     <p className="text-xs text-muted-foreground">
-                      Edit the converted code below, then click "Save & Approve".
+                      Edit the converted code below, then click "Save &amp; Approve".
                     </p>
-                    <textarea
-                      className="w-full h-80 text-xs font-mono bg-muted rounded-md p-3 border border-input resize-y focus:outline-none focus:ring-1 focus:ring-ring"
+                    <CodeEditor
                       value={modifiedCode}
-                      onChange={(e) => setModifiedCode(e.target.value)}
-                      spellCheck={false}
+                      onChange={setModifiedCode}
+                      language="abap"
+                      label={selectedObject.objectName}
+                      minHeight="340px"
+                      maxHeight="480px"
                     />
                     <div>
                       <p className="text-xs font-medium text-muted-foreground mb-1">
@@ -327,11 +331,22 @@ export default function ReviewPage() {
                   </div>
                 ) : (
                   <>
-                    <pre className="text-xs bg-muted rounded-md p-3 overflow-auto max-h-80 font-mono leading-relaxed whitespace-pre-wrap">
-                      {codeTab === "converted"
-                        ? (selectedObject.convertedCode ?? "No converted code available.")
-                        : (selectedObject.sourceCode ?? "Source code not available.")}
-                    </pre>
+                    <CodeEditor
+                      value={
+                        codeTab === "converted"
+                          ? (selectedObject.convertedCode ?? "* No converted code available.")
+                          : (selectedObject.sourceCode ?? "* Source code not available.")
+                      }
+                      readOnly
+                      language="abap"
+                      label={
+                        codeTab === "converted"
+                          ? `${selectedObject.objectName} — converted`
+                          : `${selectedObject.objectName} — original`
+                      }
+                      minHeight="320px"
+                      maxHeight="460px"
+                    />
 
                     {/* Notes input in view mode too */}
                     <div>
