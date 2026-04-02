@@ -31,6 +31,8 @@ interface ProjectCardProps {
     updatedAt: Date;
     organization: { name: string; plan: string };
     _count: { migrationObjects: number };
+    approvedCount?: number;
+    completionRate?: number;
   };
 }
 
@@ -41,7 +43,9 @@ const planColors: Record<string, string> = {
 };
 
 export function ProjectCard({ project }: ProjectCardProps) {
-  const progress = 0; // TODO: calculate from actual stats
+  const progress = project.completionRate ?? 0;
+  const approvedCount = project.approvedCount ?? 0;
+  const totalCount = project._count.migrationObjects;
 
   return (
     <Card className="group flex flex-col hover:shadow-md transition-shadow duration-200">
@@ -124,11 +128,20 @@ export function ProjectCard({ project }: ProjectCardProps) {
         <div className="space-y-1">
           <div className="h-1.5 rounded-full bg-muted overflow-hidden">
             <div
-              className="h-full rounded-full bg-primary transition-all"
+              className="h-full rounded-full bg-emerald-500 transition-all duration-500"
               style={{ width: `${progress}%` }}
             />
           </div>
-          <p className="text-[10px] text-muted-foreground">{progress}% complete</p>
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] text-muted-foreground">
+              {progress}% complete
+            </p>
+            {totalCount > 0 && (
+              <p className="text-[10px] text-muted-foreground font-mono">
+                {approvedCount}/{totalCount}
+              </p>
+            )}
+          </div>
         </div>
       </CardContent>
 

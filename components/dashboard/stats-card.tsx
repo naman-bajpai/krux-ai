@@ -1,10 +1,11 @@
+import Link from "next/link";
 import {
   FolderKanban,
   GitMerge,
   CheckCircle2,
   TrendingUp,
   Clock,
-  Zap,
+  XCircle,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -23,9 +24,9 @@ interface StatCardProps {
   value: string | number;
   description: string;
   icon: React.ElementType;
-  trend?: { value: number; label: string };
-  colorClass: string;
-  bgClass: string;
+  href?: string;
+  accentClass: string;
+  subValue?: string;
 }
 
 function StatCard({
@@ -33,40 +34,53 @@ function StatCard({
   value,
   description,
   icon: Icon,
-  trend,
-  colorClass,
-  bgClass,
+  href,
+  accentClass,
+  subValue,
 }: StatCardProps) {
-  return (
-    <Card className="overflow-hidden">
-      <CardContent className="pt-6">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">{title}</p>
-            <p className="text-2xl font-bold tracking-tight">{value}</p>
-            <p className="text-xs text-muted-foreground">{description}</p>
-          </div>
-          <div
-            className={cn(
-              "flex h-10 w-10 items-center justify-center rounded-full",
-              bgClass
+  const inner = (
+    <Card
+      className={cn(
+        "overflow-hidden relative transition-all duration-200",
+        href && "hover:shadow-md hover:-translate-y-0.5 cursor-pointer"
+      )}
+    >
+      {/* Left accent bar */}
+      <div className={cn("absolute left-0 top-0 bottom-0 w-[3px]", accentClass)} />
+      <CardContent className="pt-5 pb-4 pl-5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-medium mb-1.5">
+              {title}
+            </p>
+            <p className="text-3xl font-mono font-bold leading-none tracking-tight">
+              {value}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1.5 leading-snug">
+              {description}
+            </p>
+            {subValue && (
+              <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                {subValue}
+              </p>
             )}
-          >
-            <Icon className={cn("h-5 w-5", colorClass)} />
+          </div>
+          <div className="shrink-0 mt-0.5">
+            <Icon className="h-5 w-5 text-muted-foreground/50" />
           </div>
         </div>
-        {trend !== undefined && (
-          <div className="mt-3 flex items-center gap-1">
-            <TrendingUp className="h-3 w-3 text-muted-foreground" />
-            <span className="text-xs text-muted-foreground font-medium">
-              {trend.value}%
-            </span>
-            <span className="text-xs text-muted-foreground">{trend.label}</span>
-          </div>
-        )}
       </CardContent>
     </Card>
   );
+
+  if (href) {
+    return (
+      <Link href={href} className="block">
+        {inner}
+      </Link>
+    );
+  }
+  return inner;
 }
 
 export function DashboardStats({
@@ -77,41 +91,57 @@ export function DashboardStats({
   pendingObjects,
   completionRate,
 }: DashboardStatsProps) {
+  const awaitingReview = convertedObjects;
+
   const stats: StatCardProps[] = [
     {
-      title: "Total Projects",
+      title: "Projects",
       value: projectCount,
       description: "Active migration projects",
       icon: FolderKanban,
-      colorClass: "text-foreground",
-      bgClass: "bg-muted",
+      href: "/projects",
+      accentClass: "bg-foreground/25",
     },
     {
-      title: "Migration Objects",
+      title: "Total Objects",
       value: totalObjects.toLocaleString(),
-      description: `${pendingObjects} pending conversion`,
+      description:
+        pendingObjects > 0
+          ? `${pendingObjects.toLocaleString()} pending conversion`
+          : "All objects enqueued or processed",
       icon: GitMerge,
-      colorClass: "text-foreground",
-      bgClass: "bg-muted",
+      href: "/migration",
+      accentClass: "bg-blue-500",
     },
     {
       title: "Approved",
       value: approvedObjects.toLocaleString(),
-      description: `${convertedObjects} awaiting review`,
+      description: "Production-ready objects",
       icon: CheckCircle2,
-      colorClass: "text-foreground",
-      bgClass: "bg-muted",
+      href: "/migration",
+      accentClass: "bg-emerald-500",
+      subValue:
+        awaitingReview > 0
+          ? `${awaitingReview} awaiting review`
+          : undefined,
     },
     {
-      title: "Completion Rate",
+      title: "Completion",
       value: `${completionRate}%`,
-      description: "Objects approved vs total",
-      icon: Zap,
-      colorClass: "text-foreground",
-      bgClass: "bg-muted",
-      ...(completionRate > 0 && {
-        trend: { value: completionRate, label: "completion" },
-      }),
+      description:
+        completionRate === 100
+          ? "Migration complete"
+          : completionRate > 0
+          ? "Of objects approved"
+          : "No approvals yet",
+      icon: TrendingUp,
+      href: "/analytics",
+      accentClass:
+        completionRate >= 75
+          ? "bg-emerald-500"
+          : completionRate >= 40
+          ? "bg-amber-500"
+          : "bg-foreground/20",
     },
   ];
 

@@ -38,12 +38,24 @@ export const projectRouter = createTRPCRouter({
             _count: {
               select: { migrationObjects: true },
             },
+            migrationObjects: {
+              where: { status: "APPROVED" },
+              select: { id: true },
+            },
           },
         }),
         ctx.db.project.count({ where }),
       ]);
 
-      return { projects, total, pages: Math.ceil(total / limit) };
+      const projectsWithProgress = projects.map((p) => {
+        const approvedCount = p.migrationObjects.length;
+        const total = p._count.migrationObjects;
+        const completionRate = total > 0 ? Math.round((approvedCount / total) * 100) : 0;
+        const { migrationObjects: _, ...rest } = p;
+        return { ...rest, approvedCount, completionRate };
+      });
+
+      return { projects: projectsWithProgress, total, pages: Math.ceil(total / limit) };
     }),
 
   // Get single project with stats

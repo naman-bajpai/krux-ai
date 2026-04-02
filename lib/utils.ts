@@ -77,17 +77,17 @@ export function getConfidenceColor(score: number | null): string {
 
 export function getStatusColor(status: string): string {
   const map: Record<string, string> = {
-    PENDING: "bg-muted text-muted-foreground",
-    CONVERTING: "bg-secondary text-secondary-foreground",
-    CONVERTED: "bg-accent text-accent-foreground",
-    REVIEWED: "bg-muted text-muted-foreground",
-    APPROVED: "bg-primary text-primary-foreground",
-    FAILED: "bg-destructive text-destructive-foreground",
-    DRAFT: "bg-muted text-muted-foreground",
-    ACTIVE: "bg-secondary text-secondary-foreground",
-    PAUSED: "bg-muted text-muted-foreground",
-    COMPLETED: "bg-primary text-primary-foreground",
-    ARCHIVED: "bg-muted text-muted-foreground",
+    PENDING:    "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+    CONVERTING: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300",
+    CONVERTED:  "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
+    REVIEWED:   "bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300",
+    APPROVED:   "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-medium",
+    FAILED:     "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+    DRAFT:      "bg-muted text-muted-foreground",
+    ACTIVE:     "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+    PAUSED:     "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+    COMPLETED:  "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-medium",
+    ARCHIVED:   "bg-muted text-muted-foreground",
   };
   return map[status] ?? "bg-muted text-muted-foreground";
 }
